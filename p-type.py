@@ -2,7 +2,7 @@
 '''
 go into terminal:
 
-"cd C:\Users\ogana\Downloads\211\lab 1
+"cd "C:\Users\ogana\Downloads\211\lab 1"
 git init
 
 git add .py
