@@ -12,22 +12,28 @@ BASE_SPEED = 200    # Nominal driving speed (Degrees Per Second)
 
 LOWER_THRESHOLD = BAND_CENTER - BAND_WIDTH  # 17 cm
 UPPER_THRESHOLD = BAND_CENTER + BAND_WIDTH  # 23 cm
+GAP_THRESHOLD = 45.0                        # Distance threshold to detect a wall gap
 
 if __name__ == "__main__":
     wait_ready_sensors()
     
     try:
-        print("Running Bang-Bang Controller (Wall on Left)...")
+        print("Running Bang-Bang Controller with Gap Handling (Wall on Left)...")
         while True:
             distance = us_sensor.get_cm()
             
             if distance is not None:
                 print(f"Distance: {distance} cm")
                 
-                if distance < LOWER_THRESHOLD:
+                # Check for gaps or lost walls (distance spikes past normal tracking range)
+                if distance > GAP_THRESHOLD:
+                    # Drive straight through the gap instead of reacting to a false "too far" state
+                    left_motor.set_dps(BASE_SPEED)
+                    right_motor.set_dps(BASE_SPEED)
+                elif distance < LOWER_THRESHOLD:
                     # Too close to left wall: steer right away from wall (fast left, slow right)
-                    left_motor.set_dps(250)
-                    right_motor.set_dps(120)
+                    left_motor.set_dps(120)
+                    right_motor.set_dps(100)
                 elif distance > UPPER_THRESHOLD:
                     # Too far from left wall: steer left towards wall (slow left, fast right)
                     left_motor.set_dps(120)
