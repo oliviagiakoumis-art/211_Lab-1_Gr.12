@@ -18,15 +18,28 @@ if __name__ == "__main__":
     wait_ready_sensors()
     
     try:
-        print("Running Bang-Bang Controller with Gap Handling (Wall on Left)...")
+        print("Running Bang-Bang Controller with Corner Handling (Wall on Left)...")
         while True:
             distance = us_sensor.get_cm()
             
             if distance is not None:
                 print(f"Distance: {distance} cm")
                 
-                # Check for gaps or lost walls (distance spikes past normal tracking range)
-                if distance > GAP_THRESHOLD:
+                # --- CONCAVE CORNER / BAD SENSOR RANGE (50 to 255 cm) ---
+                if distance >= 50.0 and distance <= 255.0:
+                    print("Concave corner detected: Executing timed pivot turn...")
+                    t1 = time.time()
+                    d = 0
+                    while d <= 2.65999999999999873:
+                        d += 0.01
+                        left_motor.set_dps(90)
+                        right_motor.set_dps(-90)
+                        time.sleep(0.01)
+                        print(f"{time.time()}")
+                    t2 = time.time()
+                
+                # --- GAP CHECK ---
+                elif distance > GAP_THRESHOLD:
                     # Drive straight through the gap instead of reacting to a false "too far" state
                     left_motor.set_dps(BASE_SPEED)
                     right_motor.set_dps(BASE_SPEED)
@@ -39,7 +52,7 @@ if __name__ == "__main__":
                     left_motor.set_dps(120)
                     right_motor.set_dps(250)
                 else:
-                    # Within the band width: drive straight
+                    # Within the band width: drive straight[cite: 1]
                     left_motor.set_dps(BASE_SPEED)
                     right_motor.set_dps(BASE_SPEED)
                 
