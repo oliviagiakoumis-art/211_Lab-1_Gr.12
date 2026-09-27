@@ -20,9 +20,11 @@ if __name__ == "__main__":
     try:
         while(True):
             d = us_sensor.get_cm()
-            if (d >= 60 and d <= 255):
+            if d <= 10:
+                rotate(-90)
+            elif (d >= 60 and d <= 255):
                 rotate(90)
-                
+
             elif (d < BAND_CENTER - BAND_WIDTH):
                 rightmotor.set_dps(20)
                 leftmotor.set_dps(10)
