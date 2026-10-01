@@ -1,0 +1,117 @@
+"""ECSE 211 Lab 1 - Wall following, wall on the robot's LEFT.
+
+Set CONTROLLER to "bangbang" or "p" before each demo run.
+All speeds in this file are FORWARD dps (positive = forward);
+drive() handles the motors being mounted so that negative dps = forward.
+"""
+from utils.brick import reset_brick, wait_ready_sensors, Motor, EV3UltrasonicSensor
+import time
+
+# ---------------- Hardware ----------------
+LEFT = Motor("C")        # inner wheel (wall side)
+RIGHT = Motor("A")       # outer wheel
+US = EV3UltrasonicSensor(1)
+FORWARD_SIGN = -1        # your motors go forward with negative dps
+
+# ---------------- Which controller ----------------
+CONTROLLER = "p"         # "bangbang" or "p"
+
+# ---------------- Shared ----------------
+BAND_CENTER = 20         # cm (demo requirement)
+BASE_SPEED = 150         # forward dps, same for both wheels
+LEFT_TRIM = 0            # extra dps for the left wheel ONLY if it's measurably weaker
+LOOP_DELAY = 0.05        # s; the US sensor doesn't refresh much faster than this
+
+# ---------------- Bang-bang ----------------
+BAND_WIDTH = 3           # cm (demo requirement)
+BB_DELTA = 70            # dps added to / removed from the OUTER wheel when out of band
+
+# ---------------- P-type ----------------
+KP = 5                   # dps of correction per cm of error
+MAX_CORRECTION = 100     # cap so one bad reading can't spin the robot
+
+# ---------------- Filtering / special cases ----------------
+NO_ECHO = 200            # readings >= this mean "sensor saw nothing"
+GAP_FILTER = 20          # consecutive no-echo readings before we believe them
+                         # (20 x 0.05 s = 1 s; must be longer than it takes to cross a 10 cm gap)
+TOO_CLOSE = 9            # cm: about to touch the wall -> back off
+
+LOG_FILE = "run_log.csv" # data for the report (tuning, false positives/negatives)
+
+
+def drive(left_fwd, right_fwd):
+    """Set wheel speeds in forward dps."""
+    LEFT.set_dps(FORWARD_SIGN * (left_fwd + LEFT_TRIM))
+    RIGHT.set_dps(FORWARD_SIGN * right_fwd)
+
+
+class DistanceFilter:
+    """Ignores None and short bursts of no-echo readings (small gaps, dropouts).
+    If the wall stays missing long enough, it's a real convex corner, so the
+    large reading is passed through and the controller turns toward the wall."""
+
+    def __init__(self):
+        self.last_valid = BAND_CENTER
+        self.no_echo_count = 0
+
+    def update(self, raw):
+        if raw is None:
+            return self.last_valid
+        if raw >= NO_ECHO:
+            self.no_echo_count += 1
+            if self.no_echo_count < GAP_FILTER:
+                return self.last_valid      # probably a gap or a glitch: keep going
+            return raw                      # wall really is gone
+        self.no_echo_count = 0
+        self.last_valid = raw
+        return raw
+
+
+def bang_bang(d):
+    """Inner wheel constant; outer wheel speeds up / slows down."""
+    error = d - BAND_CENTER
+    if abs(error) <= BAND_WIDTH:
+        return BASE_SPEED, BASE_SPEED
+    if error > 0:                                   # too far -> curve toward wall
+        return BASE_SPEED, BASE_SPEED + BB_DELTA
+    return BASE_SPEED, BASE_SPEED - BB_DELTA        # too close -> curve away
+
+
+def p_type(d):
+    """Correction proportional to error, split across both wheels, capped."""
+    error = d - BAND_CENTER
+    correction = max(-MAX_CORRECTION, min(MAX_CORRECTION, KP * error))
+    return BASE_SPEED - correction, BASE_SPEED + correction
+
+
+def back_off():
+    """Too close: reverse while swinging the nose away from the wall."""
+    drive(-80, -200)
+    time.sleep(0.8)
+
+
+if __name__ == "__main__":
+    controller = bang_bang if CONTROLLER == "bangbang" else p_type
+    filt = DistanceFilter()
+    wait_ready_sensors()
+    log = open(LOG_FILE, "w")
+    log.write("t,raw,filtered,left,right\n")
+    start = time.time()
+    try:
+        while True:
+            raw = US.get_cm()
+            d = filt.update(raw)
+
+            if d < TOO_CLOSE:
+                back_off()
+                continue
+
+            left, right = controller(d)
+            drive(left, right)
+            log.write(f"{time.time() - start:.2f},{raw},{d},{left},{right}\n")
+            time.sleep(LOOP_DELAY)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        log.close()
+        reset_brick()
